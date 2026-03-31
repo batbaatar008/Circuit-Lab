@@ -1,41 +1,52 @@
 import streamlit as st
-import time
+import pandas as pd
 
-st.title("⚡ Цахилгаан схемийн интерактив симуляци")
+st.set_page_config(layout="wide")
+st.title("⚡ 6кВ-ын Түгээх Сүлжээний Симуляци")
 
-# Тохиргоо
-col1, col2 = st.columns(2)
+# --- Баруун талын удирдлага ---
+st.sidebar.header("🕹 Системийн удирдлага")
+main_breaker = st.sidebar.toggle("6кВ Толгойн таслуур", value=True)
+
+st.sidebar.subheader("🔌 Дэд станцууд")
+ktp1_load = st.sidebar.slider("КТП-1 (630 кВА) ачаалал %", 0, 120, 50)
+atp1_load = st.sidebar.slider("АТП-1 (160 кВА) ачаалал %", 0, 120, 30)
+atp2_load = st.sidebar.slider("АТП-2 (100 кВА) ачаалал %", 0, 120, 20)
+
+# --- Симуляцийн хэсэг ---
+col1, col2 = st.columns([2, 1])
+
 with col1:
-    breaker_status = st.toggle("Толгойн таслуур (Main Breaker)", value=True)
-    load_level = st.slider("Ачаалал нэмэх (Ампер)", 0, 200, 50)
-
-# Симуляцийн логик
-if breaker_status:
-    if load_level > 150:
-        st.error("⚠️ АНХААР: Ачаалал хэтэрлээ! Таслагч салгавал НУМ үүсэх эрсдэлтэй.")
-        if st.button("Одоо таслах"):
-            with st.empty():
-                for _ in range(5):
-                    st.write("💥 НУМ ҮҮСЭЖ БАЙНА (ARCING)...")
-                    time.sleep(0.2)
-            st.success("Таслагч амжилттай салгагдлаа.")
+    st.subheader("📊 Схемийн визуал дүрслэл")
     
-    if st.button("БОГИНО ХОЛБОЛТ ҮҮСГЭХ"):
-        st.subheader("🔥 ГЭМТЭЛ!")
-        st.write("Гүйдэл: ∞ Ампер")
-        time.sleep(0.5)
-        st.error("⚡ Реле ажиллалаа: Толгойн таслуур УНАВ!")
-        breaker_status = False
-else:
-    st.info("Систем хүчдэлгүй байна.")
-
-# Схемын визуал дүрслэл (Энгийнээр)
-st.markdown(f"""
-    <div style="border: 2px solid gray; padding: 20px; text-align: center;">
-        <div style="color: {'green' if breaker_status else 'red'}; font-size: 24px;">
-            {'● СИСТЕМ АЖИЛЛАЖ БАЙНА' if breaker_status else '○ СИСТЕМ ЗОГССОН'}
+    # Энэ хэсэгт схемээ энгийнээр дүрслэв
+    status_color = "green" if main_breaker else "red"
+    status_text = "ХҮЧДЭЛТЭЙ" if main_breaker else "ХҮЧДЭЛГҮЙ"
+    
+    st.markdown(f"""
+    <div style="border: 3px solid {status_color}; padding: 20px; border-radius: 10px;">
+        <h3 style="color: {status_color};">● ТҮГЭЭХ ШИН (6кВ): {status_text}</h3>
+        <div style="margin-left: 40px; border-left: 5px dashed {status_color}; padding-left: 20px;">
+            <p>⬇️ АБЛү 3x50 (Шугам №1)</p>
+            <div style="display: flex; gap: 20px;">
+                <div style="background: #f0f2f6; padding: 10px; border: 1px solid gray;">
+                    <b>АТП-2 (100 кВА)</b><br>Ачаалал: {atp2_load}%
+                </div>
+                <div style="background: #f0f2f6; padding: 10px; border: 1px solid gray;">
+                    <b>АТП-1 (160 кВА)</b><br>Ачаалал: {atp1_load}%
+                </div>
+                <div style="background: #f0f2f6; padding: 10px; border: 1px solid gray;">
+                    <b>КТП-1 (630 кВА)</b><br>Ачаалал: {ktp1_load}%
+                </div>
+            </div>
         </div>
-        <hr>
-        Гүйдлийн хэмжээ: {load_level if breaker_status else 0} A
     </div>
-""", unsafe_allow_html=True)
+    """, unsafe_allow_html=True)
+
+with col2:
+    st.subheader("📈 Тооцоолол")
+    total_load = (atp2_load*1 + atp1_load*1.6 + ktp1_load*6.3) / 10 # Энгийн тооцоо
+    st.metric("Нийт ачаалал (кВт)", f"{total_load:.1f}")
+    
+    if total_load > 80:
+        st.error("🚨 АНХААР: Шугамын ачаалал хэтэрч байна!")
