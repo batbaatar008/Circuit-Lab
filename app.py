@@ -1,63 +1,83 @@
 import streamlit as st
 import streamlit.components.v1 as components
-import time
+import pandas as pd
+import numpy as np
 
-st.set_page_config(layout="wide", page_title="DSEDN Circuit Simulator")
-st.title("⚡ 6кВ-ын Түгээх Сүлжээний Интерактив Симуляци")
+st.set_page_config(layout="wide", page_title="DSEDN Protection Lab")
+st.title("⚡ РХА-ийн Гэмтэл Бүртгэгч ба Симуляци")
 
-# --- Сторын төлөв (State Management) ---
+# --- Сторын төлөв (State) ---
+if 'max_current' not in st.session_state:
+    st.session_state.max_current = 0.0
+if 'history' not in st.session_state:
+    st.session_state.history = []
 if 'breaker_on' not in st.session_state:
     st.session_state.breaker_on = True
-if 'fault_location' not in st.session_state:
-    st.session_state.fault_location = "Байхгүй"
+if 'fuse_blown' not in st.session_state:
+    st.session_state.fuse_blown = {"АТП-2": False, "АТП-1": False, "КТП-1": False}
 
 # --- Удирдлагын хэсэг ---
-st.sidebar.header("🕹 Системийн удирдлага")
-if st.sidebar.button("♻️ Систем дахин ачаалах"):
+st.sidebar.header("🕹 Систем")
+if st.sidebar.button("♻️ Түүх арилгах & Сэргээх"):
+    st.session_state.max_current = 0.0
+    st.session_state.history = []
     st.session_state.breaker_on = True
-    st.session_state.fault_location = "Байхгүй"
+    st.session_state.fuse_blown = {"АТП-2": False, "АТП-1": False, "КТП-1": False}
     st.rerun()
 
-st.sidebar.subheader("🔌 Таслуурын төлөв")
-st.session_state.breaker_on = st.sidebar.toggle("Толгойн таслуур (6кВ)", value=st.session_state.breaker_on)
+target = st.sidebar.selectbox("🎯 Гэмтэл үүсгэх цэг:", 
+                             ["Сонгох...", "6кВ Шугам", "АТП-2 (0.4кВ)", "АТП-1 (0.4кВ)", "КТП-1 (0.4кВ)"])
 
-st.sidebar.subheader("💥 Гэмтэл үүсгэх цэг")
-target = st.sidebar.selectbox("Гэмтэл үүсгэх дэд станц сонго:", ["Байхгүй", "АТП-2 (100кВА)", "АТП-1 (160кВА)", "КТП-1 (630кВА)"])
+# --- Логик ба Тооцоолол ---
+U_nom = 6000
+Z_sys = 0.35 # Гэмтлийн гүйдлийг их байлгахын тулд багасгав
+current_A = 45.0 if st.session_state.breaker_on else 0.0
+is_fault = False
 
-if st.sidebar.button("💥 ГЭМТЭЛ ҮҮСГЭХ") and target != "Байхгүй":
-    st.session_state.fault_location = target
-    st.rerun()
-
-# --- Физик тооцоолол ---
-U_nom = 6000  # 6кВ
-Z_sys = 0.4   # Системийн эсэргүүцэл
-current_A = 0
-status = "🟢 Хэвийн ажиллагаа"
-
-if st.session_state.breaker_on:
-    if st.session_state.fault_location == "Байхгүй":
-        current_A = 45.5 # Хэвийн ачааллын дундаж гүйдэл
+if st.sidebar.button("💥 ГЭМТЭЛ ҮҮСГЭХ") and target != "Сонгох...":
+    is_fault = True
+    current_A = U_nom / Z_sys # Гэмтлийн үеийн асар их гүйдэл
+    
+    # Хамгийн их гүйдлийг хадгалах (Peak Hold)
+    if current_A > st.session_state.max_current:
+        st.session_state.max_current = current_A
+    
+    # Түүхэнд бичих
+    st.session_state.history.append(current_A)
+    
+    # Хамгаалалтын ажиллагаа
+    if target == "6кВ Шугам":
+        st.session_state.breaker_on = False
     else:
-        current_A = U_nom / Z_sys # Богино холболтын гүйдэл I = U/Z
-        status = f"🔥 {st.session_state.fault_location} дээр БОГИНО ХОЛБОЛТ!"
-        
-        # РХА-ийн ажиллагаа (Хэт гүйдлийн хамгаалалт)
-        if current_A > 500:
-            st.toast(f"🚨 РХА Ажиллалаа! I={current_A:.0f}A", icon="⚠️")
-            time.sleep(1) # Хамгаалалтын хугацааны барилт
-            st.session_state.breaker_on = False
-            st.session_state.fault_location = "Байхгүй"
-            status = "🚨 РХА ТАСЛАВ (Overcurrent Trip)"
-            st.rerun()
+        sub_name = target.split(" ")[0]
+        st.session_state.fuse_blown[sub_name] = True
+    
+    st.rerun()
 
-# Мэдээллийн самбар
-c1, c2 = st.columns(2)
-c1.metric("Шугамын гүйдэл (А)", f"{current_A:.1f} A", delta=None if current_A < 500 else "АЮУЛТАЙ", delta_color="inverse")
-c2.info(f"Төлөв: {status}")
+# --- Мэдээллийн самбар ---
+col1, col2, col3 = st.columns(3)
 
-# --- HTML5 Canvas Animation ---
+with col1:
+    st.metric("Одоогийн гүйдэл", f"{current_A:.1f} A")
+
+with col2:
+    # Хамгийн их гүйдлийг улаанаар тодруулж харуулна
+    st.metric("⚠️ БҮРТГЭГДСЭН ИХ ГҮЙДЭЛ", f"{st.session_state.max_current:.1f} A", 
+              delta=f"{st.session_state.max_current - 45:.1f} A хэтрэлт", delta_color="inverse")
+
+with col3:
+    status = "🟢 Хэвийн" if st.session_state.breaker_on else "🔴 ТАСАРСАН"
+    st.subheader(f"Төлөв: {status}")
+
+# --- Гүйдлийн график (Осциллограмм шиг) ---
+if st.session_state.history:
+    st.subheader("📈 Гүйдлийн өөрчлөлтийн график (Fault Record)")
+    chart_data = pd.DataFrame(st.session_state.history, columns=["Ампер (А)"])
+    st.line_chart(chart_data)
+
+# --- Canvas Animation ---
 canvas_code = f"""
-<canvas id="simCanvas" width="900" height="550" style="background:#1e1e1e; border-radius:10px;"></canvas>
+<canvas id="simCanvas" width="900" height="400" style="background:#1e1e1e; border-radius:10px;"></canvas>
 <script>
 const canvas = document.getElementById('simCanvas');
 const ctx = canvas.getContext('2d');
@@ -66,73 +86,39 @@ let dashOffset = 0;
 function draw() {{
     ctx.clearRect(0, 0, canvas.width, canvas.height);
     const isOn = {'true' if st.session_state.breaker_on else 'false'};
-    const faultLoc = "{st.session_state.fault_location}";
-    
-    // 1. 6кВ Шин зурах
-    ctx.strokeStyle = "#888"; ctx.lineWidth = 8;
-    ctx.beginPath(); ctx.moveTo(50, 50); ctx.lineTo(850, 50); ctx.stroke();
-    ctx.fillStyle = "white"; ctx.font = "bold 18px Courier"; ctx.fillText("6кВ ШИН", 750, 40);
+    const fuses = {st.session_state.fuse_blown};
 
-    // 2. Толгойн таслуур
-    ctx.strokeStyle = "white"; ctx.strokeRect(50, 70, 40, 40);
-    if(isOn) {{ ctx.fillStyle = "#00ff00"; ctx.fillRect(55, 75, 30, 30); }}
-    ctx.fillStyle = "white"; ctx.fillText("Шугам №1", 100, 95);
+    // Шугамууд зурах
+    ctx.strokeStyle = "#555"; ctx.lineWidth = 4;
+    ctx.beginPath(); ctx.moveTo(50, 50); ctx.lineTo(850, 50); ctx.stroke(); // Шин
+    ctx.beginPath(); ctx.moveTo(70, 50); ctx.lineTo(70, 150); ctx.lineTo(600, 150); ctx.stroke(); // Үндсэн шугам
 
-    // 3. Тэнхлэг шугам (АС-50)
-    ctx.beginPath(); ctx.moveTo(70, 110); ctx.lineTo(70, 200); ctx.lineTo(600, 200); ctx.stroke();
-    
-    // Дэд станцуудын координат ба өгөгдөл
     const subs = [
-        {{ name: "АТП-2", kva: "100кВА", x: 200, y: 200, toY: 400, label: "АС-50 (4.1км)" }},
-        {{ name: "АТП-1", kva: "160кВА", x: 400, y: 200, toY: 350, label: "АС-50 (3км)" }},
-        {{ name: "КТП-1", kva: "630кВА", x: 600, y: 200, toY: 300, label: "АС-50 (10км)" }}
+        {{ name: "АТП-2", x: 200, y: 150, toY: 300 }},
+        {{ name: "АТП-1", x: 400, y: 150, toY: 300 }},
+        {{ name: "КТП-1", x: 600, y: 150, toY: 300 }}
     ];
 
     subs.forEach(s => {{
-        // Салбар шугам
         ctx.beginPath(); ctx.moveTo(s.x, s.y); ctx.lineTo(s.x, s.toY); ctx.stroke();
-        ctx.fillStyle = "#aaa"; ctx.font = "12px Arial"; ctx.fillText(s.label, s.x + 10, (s.y+s.toY)/2);
+        ctx.strokeStyle = "white"; ctx.strokeRect(s.x-25, s.toY, 50, 30);
+        ctx.fillStyle = "white"; ctx.fillText(s.name, s.x-20, s.toY+20);
 
-        // Трансформатор (Дүрслэл)
-        ctx.strokeStyle = "white"; ctx.strokeRect(s.x - 30, s.toY, 60, 40);
-        ctx.fillStyle = "white"; ctx.fillText(s.name, s.x - 25, s.toY + 25);
-        ctx.font = "10px Arial"; ctx.fillText(s.kva, s.x - 25, s.toY + 55);
-
-        // Хөдөлгөөнт гүйдэл
-        if(isOn) {{
-            ctx.beginPath();
-            ctx.setLineDash([10, 15]);
-            ctx.lineDashOffset = -dashOffset;
-            ctx.strokeStyle = (faultLoc.includes(s.name)) ? "#ff0000" : "#00ff00";
-            ctx.lineWidth = 3;
+        if(isOn && !fuses[s.name]) {{
+            ctx.beginPath(); ctx.setLineDash([10, 15]); ctx.lineDashOffset = -dashOffset;
+            ctx.strokeStyle = "#00ff00"; ctx.stroke();
             ctx.moveTo(s.x, s.y); ctx.lineTo(s.x, s.toY); ctx.stroke();
             ctx.setLineDash([]);
         }}
-
-        // Гэмтлийн эффект (Arc/Spark)
-        if(faultLoc.includes(s.name)) {{
-            ctx.beginPath();
-            ctx.fillStyle = "yellow";
-            for(let i=0; i<8; i++) {{
-                let angle = i * Math.PI / 4;
-                ctx.lineTo(s.x + Math.cos(angle)*40, s.toY + Math.sin(angle)*40);
-            }}
-            ctx.fill();
+        if(fuses[s.name]) {{
+            ctx.fillStyle = "red"; ctx.fillText("🔥 FUSE BLOWN", s.x-35, s.toY-10);
         }}
     }});
 
-    // Үндсэн шугамын гүйдэл
-    if(isOn) {{
-        ctx.beginPath(); ctx.setLineDash([10, 15]); ctx.lineDashOffset = -dashOffset;
-        ctx.strokeStyle = (faultLoc !== "Байхгүй") ? "#ff0000" : "#00ff00";
-        ctx.moveTo(70, 110); ctx.lineTo(70, 200); ctx.lineTo(600, 200); ctx.stroke();
-        ctx.setLineDash([]);
-    }}
-
-    dashOffset += (faultLoc !== "Байхгүй") ? 15 : 2;
+    dashOffset += 2;
     requestAnimationFrame(draw);
 }}
 draw();
 </script>
 """
-components.html(canvas_code, height=600)
+components.html(canvas_code, height=420)
