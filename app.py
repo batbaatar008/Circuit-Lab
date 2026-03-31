@@ -1,52 +1,67 @@
 import streamlit as st
-import pandas as pd
+import streamlit.components.v1 as components
 
-st.set_page_config(layout="wide")
-st.title("⚡ 6кВ-ын Түгээх Сүлжээний Симуляци")
+st.title("⚡ Интерактив Хөдөлгөөнт Схем")
 
-# --- Баруун талын удирдлага ---
-st.sidebar.header("🕹 Системийн удирдлага")
-main_breaker = st.sidebar.toggle("6кВ Толгойн таслуур", value=True)
+# Таслуурын төлөвийг сонгох
+power_on = st.toggle("Хүчдэл залгах", value=True)
+speed = st.slider("Гүйдлийн хурд", 1, 10, 3)
 
-st.sidebar.subheader("🔌 Дэд станцууд")
-ktp1_load = st.sidebar.slider("КТП-1 (630 кВА) ачаалал %", 0, 120, 50)
-atp1_load = st.sidebar.slider("АТП-1 (160 кВА) ачаалал %", 0, 120, 30)
-atp2_load = st.sidebar.slider("АТП-2 (100 кВА) ачаалал %", 0, 120, 20)
+# HTML & JavaScript Canvas код
+canvas_html = f"""
+<canvas id="circuitCanvas" width="600" height="400" style="border:1px solid #d3d3d3; background: #262730;"></canvas>
 
-# --- Симуляцийн хэсэг ---
-col1, col2 = st.columns([2, 1])
+<script>
+const canvas = document.getElementById('circuitCanvas');
+const ctx = canvas.getContext('2d');
+let offset = 0;
 
-with col1:
-    st.subheader("📊 Схемийн визуал дүрслэл")
+function draw() {{
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
     
-    # Энэ хэсэгт схемээ энгийнээр дүрслэв
-    status_color = "green" if main_breaker else "red"
-    status_text = "ХҮЧДЭЛТЭЙ" if main_breaker else "ХҮЧДЭЛГҮЙ"
-    
-    st.markdown(f"""
-    <div style="border: 3px solid {status_color}; padding: 20px; border-radius: 10px;">
-        <h3 style="color: {status_color};">● ТҮГЭЭХ ШИН (6кВ): {status_text}</h3>
-        <div style="margin-left: 40px; border-left: 5px dashed {status_color}; padding-left: 20px;">
-            <p>⬇️ АБЛү 3x50 (Шугам №1)</p>
-            <div style="display: flex; gap: 20px;">
-                <div style="background: #f0f2f6; padding: 10px; border: 1px solid gray;">
-                    <b>АТП-2 (100 кВА)</b><br>Ачаалал: {atp2_load}%
-                </div>
-                <div style="background: #f0f2f6; padding: 10px; border: 1px solid gray;">
-                    <b>АТП-1 (160 кВА)</b><br>Ачаалал: {atp1_load}%
-                </div>
-                <div style="background: #f0f2f6; padding: 10px; border: 1px solid gray;">
-                    <b>КТП-1 (630 кВА)</b><br>Ачаалал: {ktp1_load}%
-                </div>
-            </div>
-        </div>
-    </div>
-    """, unsafe_allow_html=True)
+    // Шугамын замууд (Чиний зурсан схемтэй төстэй)
+    const paths = [
+        [[50, 50], [500, 50]],   // Үндсэн 6кВ шугам
+        [[150, 50], [150, 150]], // АТП-2 салбар
+        [[300, 50], [300, 150]], // АТП-1 салбар
+        [[450, 50], [450, 150]]  // КТП-1 салбар
+    ];
 
-with col2:
-    st.subheader("📈 Тооцоолол")
-    total_load = (atp2_load*1 + atp1_load*1.6 + ktp1_load*6.3) / 10 # Энгийн тооцоо
-    st.metric("Нийт ачаалал (кВт)", f"{total_load:.1f}")
-    
-    if total_load > 80:
-        st.error("🚨 АНХААР: Шугамын ачаалал хэтэрч байна!")
+    paths.forEach(path => {{
+        // 1. Үндсэн хар шугам зурах
+        ctx.beginPath();
+        ctx.strokeStyle = '#555';
+        ctx.lineWidth = 4;
+        ctx.moveTo(path[0][0], path[0][1]);
+        ctx.lineTo(path[1][0], path[1][1]);
+        ctx.stroke();
+
+        // 2. Хөдөлгөөнт "Цэгүүд" (Гүйдэл) зурах
+        if ({'true' if power_on else 'false'}) {{
+            ctx.beginPath();
+            ctx.setLineDash([10, 15]); // Цэг хоорондын зай
+            ctx.lineDashOffset = -offset;
+            ctx.strokeStyle = '#00FF00'; // Ногоон гэрэлтсэн өнгө
+            ctx.lineWidth = 4;
+            ctx.moveTo(path[0][0], path[0][1]);
+            ctx.lineTo(path[1][0], path[1][1]);
+            ctx.stroke();
+            ctx.setLineDash([]); // Буцааж хэвийн болгох
+        }}
+    }});
+
+    // Дэд станцуудыг зурах (Дөрвөлжин)
+    ctx.fillStyle = "white";
+    ctx.fillRect(120, 150, 60, 40); ctx.fillText("АТП-2", 130, 210);
+    ctx.fillRect(270, 150, 60, 40); ctx.fillText("АТП-1", 280, 210);
+    ctx.fillRect(420, 150, 60, 40); ctx.fillText("КТП-1", 430, 210);
+
+    offset += {speed};
+    requestAnimationFrame(draw);
+}}
+draw();
+</script>
+"""
+
+# Canvas-ийг Streamlit рүү оруулах
+components.html(canvas_html, height=450)
